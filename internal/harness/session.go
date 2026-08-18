@@ -143,13 +143,16 @@ func (m *Manager) CreateSession(workDir string) (*Session, error) {
 // calling tools; the harness writes history and provenance to
 // the manager's SQLite store.
 type Session struct {
-	ID        string
-	WorkDir   string
-	b1        *b1Service
-	runner    *RunIRRunner
-	manager   *Manager
-	mu        sync.Mutex
-	CreatedAt time.Time
+	ID         string
+	WorkDir    string
+	b1         *b1Service
+	runner     *RunIRRunner
+	manager    *Manager
+	mu         sync.Mutex
+	CreatedAt  time.Time
+	seq        int
+	history    []HistoryItem
+	provenance map[string]provenanceEntry
 }
 
 // RunTask runs one task to completion. v3.1 keeps the agent
@@ -278,6 +281,158 @@ func (s *Session) runSplice(ctx context.Context, args json.RawMessage) (json.Raw
 		"ok":         true,
 		"post_state": resp.PostState,
 	})
+}
+
+// Dispatch is the public entry point for one tool call. v3.1
+// session-level dispatch: the session owns the b1 service
+// and the run-ir runner, so the caller does not have to
+// thread them through.
+func (s *Session) Dispatch(ctx context.Context, tool string, args map[string]any) (DispatchResult, error) {
+	if s == nil {
+		return DispatchResult{}, fmt.Errorf("dispatch: nil session")
+	}
+	if tool == "" {
+		return DispatchResult{}, fmt.Errorf("dispatch: empty tool name")
+	}
+	raw, err := json.Marshal(args)
+	if err != nil {
+		return DispatchResult{}, fmt.Errorf("dispatch: marshal args: %w", err)
+	}
+	// Provenance is recorded before the call so even an
+	// infra-level failure leaves an audit trail.
+	s.recordProvenance(tool)
+	out, runErr := s.runTool(ctx, tool, raw)
+	result := DispatchResult{}
+	if runErr != nil {
+		result.Error = runErr.Error()
+		s.appendHistory(tool, raw, nil, runErr.Error())
+		return result, runErr
+	}
+	// Parse the wire envelope. Tools may return either a
+	// bare object or a string body.
+	var env map[string]any
+	if err := json.Unmarshal(out, &env); err == nil {
+		if v, ok := env["ok"].(bool); ok {
+			result.OK = v
+		}
+		if v, ok := env["stdout"].(string); ok {
+			result.Output = v
+		}
+		if v, ok := env["stderr"].(string); ok && result.Output == "" {
+			result.Output = v
+		}
+		if v, ok := env["text"].(string); ok {
+			result.Output = v
+		}
+		if v, ok := env["post_state"].(string); ok {
+			result.PostState = v
+		}
+		if v, ok := env["ref"].(string); ok {
+			result.Ref = v
+		}
+		if v, ok := env["status"].(float64); ok {
+			result.Status = int(v)
+		}
+	} else {
+		// Fall back to the raw bytes as the output.
+		result.Output = string(out)
+	}
+	s.appendHistory(tool, raw, out, "")
+	return result, nil
+}
+
+// DispatchResult is the structured outcome of a tool call.
+// The harness returns this shape so callers do not have to
+// re-parse the wire envelope.
+type DispatchResult struct {
+	OK        bool
+	Output    string
+	Ref       string
+	PostState string
+	Status    int
+	Error     string
+}
+
+// History returns the per-session history items in order.
+func (s *Session) History() []HistoryItem {
+	if s == nil {
+		return nil
+	}
+	return s.history
+}
+
+// ProvenanceFor returns the recorded handler+protocol pair
+// for a tool, or ("unknown","unknown") if the tool was
+// never recorded. v3.1 is fail-closed: an unknown
+// provenance is INFRA_FAIL, not silent.
+func (s *Session) ProvenanceFor(tool string) (string, string) {
+	if s == nil {
+		return "unknown", "unknown"
+	}
+	if v, ok := s.provenance[tool]; ok {
+		return v.handler, v.protocol
+	}
+	return "unknown", "unknown"
+}
+
+type HistoryItem struct {
+	Seq       int
+	Tool      string
+	Arguments string
+	Output    string
+	Error     string
+	CreatedAt time.Time
+}
+
+type provenanceEntry struct {
+	handler  string
+	protocol string
+}
+
+func (s *Session) appendHistory(tool string, args, out json.RawMessage, errStr string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seq++
+	item := HistoryItem{
+		Seq:       s.seq,
+		Tool:      tool,
+		Arguments: string(args),
+		Output:    string(out),
+		Error:     errStr,
+		CreatedAt: time.Now(),
+	}
+	s.history = append(s.history, item)
+}
+
+func (s *Session) recordProvenance(tool string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.provenance == nil {
+		s.provenance = make(map[string]provenanceEntry)
+	}
+	if _, ok := s.provenance[tool]; ok {
+		return
+	}
+	// Map tool to handler + protocol. v3.1 contract:
+	//   read_ref     -> b1ReadRef      (b1)
+	//   splice       -> b1SpliceWithObs or b1SpliceNoObs (b1)
+	//   sh           -> RunIRRunner    (runir)
+	var handler, protocol string
+	switch tool {
+	case contract.ToolReadRef:
+		handler, protocol = "b1ReadRef", "b1"
+	case contract.ToolSplice:
+		if s.manager != nil && s.manager.cfg.Arm == contract.ArmReadRefSplice {
+			handler, protocol = "b1SpliceNoObs", "b1"
+		} else {
+			handler, protocol = "b1SpliceWithObs", "b1"
+		}
+	case contract.ToolSH:
+		handler, protocol = "RunIRRunner", "runir"
+	default:
+		handler, protocol = "unknown", "unknown"
+	}
+	s.provenance[tool] = provenanceEntry{handler: handler, protocol: protocol}
 }
 
 // initSchema creates the SQLite tables. v3.1 uses three
