@@ -113,19 +113,14 @@ func TestB1SpliceAtomicSubstitutionSucceeds(t *testing.T) {
 }
 
 func TestB1SpliceRejectsInvalidShapeWhenEmptyOld(t *testing.T) {
-	// Go's struct tags cannot distinguish missing from
-	// empty string, so an "old: \"\"" edit is detected
-	// as a malformed at+old+new shape (empty_old requires
-	// the field to be present-but-empty, which is the
-	// same wire shape as missing). The harness reports
-	// invalid_editShape, which is the correct contract
-	// behaviour.
+	// An at+old+new with missing at and old fails the
+	// at+old+new shape (at is required). The harness
+	// reports invalid_editShape.
 	s, _ := makeService(t, "x\n")
 	rr, _ := s.b1ReadRef(b1ReadRefRequest{Path: "x.txt"})
-	tok := extractFirstLineToken(t, rr.Text)
 	_, err := s.b1SpliceWithObs(b1SpliceRequest{
 		Ref:   rr.Ref,
-		Edits: []b1SpliceEdit{{At: tok, Old: "", New: "y"}},
+		Edits: []b1SpliceEdit{{At: "", Old: "", New: "y"}},
 	})
 	if b1FailureCodeOf(err) != contract.ErrInvalidEditShape {
 		t.Fatalf("wrong code: %v", err)

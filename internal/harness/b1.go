@@ -390,6 +390,10 @@ type b1SpliceResponse struct {
 // form anchored to byte positions in the original file. The
 // normalized form is what the rest of the pipeline operates on.
 func (s *b1Service) b1NormalizeEdit(snap *b1Snapshot, index int, e b1SpliceEdit) (b1NormalizedEdit, error) {
+	// For at+old+new: at least at and old must be present.
+	// new can be empty (deletion of old's content).
+	// For start+end+text and after+text: text is required
+	// (harness always rewrites complete line ranges).
 	hasAt := e.At != ""
 	hasOld := e.Old != ""
 	hasNew := e.New != ""
@@ -398,7 +402,7 @@ func (s *b1Service) b1NormalizeEdit(snap *b1Snapshot, index int, e b1SpliceEdit)
 	hasText := e.Text != ""
 	hasAfter := e.After != ""
 
-	atOldNew := hasAt && hasOld && hasNew && !hasStart && !hasEnd && !hasText && !hasAfter
+	atOldNew := hasAt && hasOld && !hasStart && !hasEnd && !hasText && !hasAfter
 	rangeRepl := !hasAt && !hasOld && !hasNew && hasStart && hasEnd && hasText && !hasAfter
 	insertion := !hasAt && !hasOld && !hasNew && !hasStart && !hasEnd && hasAfter && hasText
 
