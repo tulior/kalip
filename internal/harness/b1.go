@@ -416,6 +416,7 @@ func (s *b1Service) b1NormalizeEdit(snap *b1Snapshot, index int, e b1SpliceEdit)
 			return b1NormalizedEdit{}, b1Fail(contract.ErrEmptyOld,
 				"edits[%d]: old must be non-empty for at+old+new; no edits were applied", index)
 		}
+		_ = e.New // New is allowed to be empty (deletion).
 		lnum, _, err := s.b1ResolveLineToken(snap, e.At)
 		if err != nil {
 			return b1NormalizedEdit{}, err
