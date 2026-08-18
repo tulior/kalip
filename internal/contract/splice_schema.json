@@ -1,0 +1,75 @@
+{
+  "type": "function",
+  "name": "splice",
+  "description": "Apply atomic edits using anchors copied from read_ref.\n\nFor a small replacement within one observed line, use at + old + new.\nold must occur exactly once in that anchored line. Surrounding bytes,\nindentation, comments, and the line boundary are preserved.\n\nFor complete-line or multiline replacement, use start + end + text.\nThe addressed lines are replaced as complete logical lines and the\nharness preserves the boundary to untouched following source.\n\nFor insertion, use after + text.\n\nAll edits use the same snapshot and are validated before mutation.\nSuccessful edits return bounded local bytes read from the committed\nfile. This post-state shows what was written; it does not establish\nsemantic correctness.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "ref": {
+        "type": "string",
+        "description": "Snapshot ID from read_ref, e.g. R1."
+      },
+      "edits": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["at", "old", "new"],
+              "properties": {
+                "at": {
+                  "type": "string",
+                  "description": "Lnn:hh anchor of line to edit."
+                },
+                "old": {
+                  "type": "string",
+                  "description": "Substring to replace; must occur exactly once in the anchored line."
+                },
+                "new": {
+                  "type": "string",
+                  "description": "Replacement substring."
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["start", "end", "text"],
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "description": "Lnn:hh start of range."
+                },
+                "end": {
+                  "type": "string",
+                  "description": "Lnn:hh end of range."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Replacement text (range shape)."
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["after", "text"],
+              "properties": {
+                "after": {
+                  "type": "string",
+                  "description": "Lnn:hh insertion anchor."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Inserted text (insert shape)."
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "required": ["ref", "edits"]
+  }
+}
