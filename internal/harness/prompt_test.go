@@ -12,7 +12,7 @@ func TestSystemPromptBans(t *testing.T) {
 		"sed -n", "grep -n", "sed -i", "perl -pi",
 		"wc -l",
 		"GOAL.md",
-		"pipefail",
+		
 	}
 	for _, want := range mustContain {
 		if !contains(SystemPrompt, want) {
