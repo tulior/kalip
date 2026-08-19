@@ -1,86 +1,52 @@
-// Command kalip is the KALIP harness entry point.
+// kalip is a thin shell wrapper for coding models.
 //
-// KALIP is a minimal, rigorous interface between capable models
-// and the work they act on. The harness exposes three tools:
+// Usage:
 //
-//	read_ref = addressable observation
-//	splice   = structure-preserving mutation + truthful local post-state
-//	sh       = general computation and semantic verification
+//	kalip <task-prompt>
 //
-// The harness is authoritative about "these are the bytes now
-// present here" and NOT authoritative about "these bytes solve
-// the user's problem". The model is responsible for verification.
+// The harness spawns a persistent bash, loads GOAL.md if present,
+// sends the static system prompt + task to the model, and runs the
+// tool loop until the model produces a final reply.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/tulior/kalip/internal/contract"
 	"github.com/tulior/kalip/internal/harness"
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatalf("kalip: %v", err)
-	}
-}
-
-func run() error {
-	cfg := harness.DefaultConfig()
-
-	if v := os.Getenv("KALIP_MODEL"); v != "" {
-		cfg.Model = v
-	}
-	if v := os.Getenv("KALIP_ARM"); v != "" {
-		cfg.Arm = v
-	}
-	if v := os.Getenv("KALIP_REASONING"); v != "" {
-		cfg.Reasoning = v
-	}
-	if v := os.Getenv("KALIP_WORKDIR"); v != "" {
-		cfg.WorkDir = v
-	}
-
-	mgr, err := harness.NewManager(cfg)
-	if err != nil {
-		return fmt.Errorf("new manager: %w", err)
-	}
-	defer mgr.Close()
-
-	// The harness talks to one model API and runs one task
-	// per session. We accept a single task via argv or stdin.
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: kalip <task-prompt>")
+		fmt.Fprintln(os.Stderr, "usage: kalip <task-prompt>")
+		os.Exit(2)
 	}
 	task := os.Args[1]
+	work, _ := os.Getwd()
 
-	ctx := context.Background()
-	sess, err := mgr.CreateSession(cfg.WorkDir)
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	sh, err := harness.NewSh(ctx)
 	if err != nil {
-		return fmt.Errorf("create session: %w", err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-	if err := sess.RunTask(ctx, task); err != nil {
-		return fmt.Errorf("run task: %w", err)
+	defer sh.Close()
+
+	m := harness.NewModel()
+	if m.Model == "" {
+		fmt.Fprintln(os.Stderr, "KALIP_MODEL not set")
+		os.Exit(1)
 	}
-	return nil
+
+	loop := &harness.Loop{Sh: sh, Model: m, Work: work}
+	if err := loop.Run(ctx, task); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
-
-// ContractDumps returns the contract JSON for inspection.
-// Exposed for tooling; not part of the runtime hot path.
-func ContractDumps() (schemaJSON, descriptionsJSON string, err error) {
-	return contract.Dump()
-}
-
-// ToolCall is the wire shape for one tool invocation from the model.
-type ToolCall = contract.ToolCall
-
-// ToolResult is the wire shape for one tool result to the model.
-type ToolResult = contract.ToolResult
-
-// JSONSchema is a placeholder type used by tooling that introspects
-// the tool schema. Kept in main to avoid an import cycle.
-type JSONSchema = json.RawMessage
