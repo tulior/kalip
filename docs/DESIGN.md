@@ -1,133 +1,125 @@
 # Design
 
-The canonical propositions KALIP is built on. This is the architecture
-in its own words — the source of truth for *why* the harness is the
-way it is. The wire contract lives in [`CONTRACT.md`](CONTRACT.md);
-this document is the rationale, not the spec.
-
-Three categories, distinguished by their epistemic status:
-
-- **[INV]** constitutional invariant — something the harness should
-  preserve by construction. Violating it is a bug in the harness.
-- **[OBS]** experimentally earned conclusion — supported by the runs.
-  Could be overturned by new evidence.
-- **[DER]** derived proposition — architecture justified by the
-  invariants + evidence, but not itself a universal empirical law.
+The architecture in its own words — the rationale for why the
+harness is the way it is. The wire contract lives in
+[`CONTRACT.md`](CONTRACT.md); this is the "why", not the "what".
 
 ## 1. Capability and interface
 
-> **[OBS] Semantic reducibility ≠ behavioral redundancy.**
+**Semantic reducibility ≠ behavioral redundancy.**
 
 A capability being expressible through another primitive does not
 mean the model behaves equivalently when forced to express it that
 way. `sh` was semantically emulable with process execution, yet
 materially changed trajectories.
 
-> **[OBS] P(T | S) ≠ P(T).**
+**P(T | S) ≠ P(T).**
 
-Tool adoption is relational. Whether a model uses a tool depends on
-the rest of the surface presented alongside it. There is no
+Tool adoption is relational. Whether a model uses a tool depends
+on the rest of the surface presented alongside it. There is no
 meaningful context-free question "Does the model like tool T?" —
 only "Does the model use T under surface S?"
 
-> **[DER] tool surface = capability surface + planning representation surface.**
+**tool surface = capability surface + planning representation surface.**
 
-A tool is not merely another capability. It is another representation
-the model can choose while planning. Adding a semantically redundant
-tool can still change behavior.
+A tool is not merely another capability. It is another
+representation the model can choose while planning. Adding a
+semantically redundant tool can still change behavior.
 
-> **[OBS] representation preservation ⇏ representation coexistence.**
+**representation preservation ≠ representation coexistence.**
 
-Two individually useful representations do not necessarily belong on
-the same tool surface. Offering both can impose choice cost.
+Two individually useful representations do not necessarily belong
+on the same tool surface. Offering both can impose choice cost.
 
-> **[OBS] more available tools can create interference without adding capability.**
+**More available tools can create interference without adding capability.**
 
-The broad surfaces produced more calls and more choice behavior even
-when the extra tools were not necessary. Minimality is not aesthetic
-minimalism. It is a hypothesis about reducing planning entropy.
+The broad surfaces produced more calls and more choice behavior
+even when the extra tools were not necessary. Minimality is a
+hypothesis about reducing planning entropy, not an aesthetic
+preference.
 
 ## 2. Division of labor between model and harness
 
-> **[INV] Do not ask the model to state or derive information the harness can determine exactly.**
+**Do not ask the model to state or derive information the harness can determine exactly.**
 
 If the harness knows the path, changed bytes, exit status, snapshot
 identity, or exact anchor, it should provide that fact. Model
 cognition should not be spent reconstructing machine-known state.
 
-> **[INV] Recognize exact structure; do not guess intent.**
+**Recognize exact structure; do not guess intent.**
 
 The harness may validate that a token exists exactly once. It should
-not decide that some nearby token is "probably what the model meant."
-This is the basis of fail-closed editing.
+not decide that some nearby token is "probably what the model
+meant." This is the basis of fail-closed editing.
 
-> **[INV] syntax knowledge is not semantic knowledge.**
+**Syntax knowledge is not semantic knowledge.**
 
-Understanding that a command contains a pipe, redirect, filename, or
-shell construct does not mean the harness knows the command's effects
-or intent. That killed the command-parser / journal architecture.
+Understanding that a command contains a pipe, redirect, filename,
+or shell construct does not mean the harness knows the command's
+effects or intent. That killed the command-parser / journal
+architecture.
 
-> **[INV] model authors semantic delta; harness preserves irrelevant surrounding bytes.**
+**Model authors semantic delta; harness preserves irrelevant surrounding bytes.**
 
-The model should specify what needs to change. The harness should
-preserve everything outside that change that it can preserve
-mechanically. This is the central reason anchored local substitution
-exists.
+The model specifies what needs to change. The harness preserves
+everything outside that change that it can preserve mechanically.
+This is the central reason anchored local substitution exists.
 
-> **[DER] mutation payload should approach the size of the semantic delta.**
+**Mutation payload should approach the size of the semantic delta.**
 
 For `return x * 2` becoming `return x * 1`, the model should
-preferably author `old = "2", new = "1"` — or another sufficiently
-unique local substitution — rather than reconstruct indentation,
-comments, neighboring source, and line boundaries unnecessarily.
+preferably author `old = "2", new = "1"` — or another
+sufficiently unique local substitution — rather than reconstruct
+indentation, comments, neighboring source, and line boundaries
+unnecessarily.
 
 ## 3. Execution
 
-> **[INV] observation must not change execution semantics.**
+**Observation must not change execution semantics.**
 
-Capturing output is an observation concern. It must not change which
-processes remain alive, when the command completes, or what file
-descriptors descendants inherit in a way that changes execution
-behavior. This was directly earned by the pipe-capture failure.
+Capturing output is an observation concern. It must not change
+which processes remain alive, when the command completes, or what
+file descriptors descendants inherit in a way that changes
+execution behavior. This was directly earned by the pipe-capture
+failure.
 
-> **[INV] execution completion ⊥ observation transport.**
+**Execution completion is independent of observation transport.**
 
 Whether the command is finished must not depend on whether
 descendants still hold an observation pipe open. That is why KALIP
-moved to bounded tempfile-backed observation.
+uses bounded tempfile-backed observation.
 
-> **[INV] bytes command creates ≠ bytes harness understands ≠ bytes model sees.**
+**Bytes the command creates ≠ bytes the harness understands ≠ bytes the model sees.**
 
-Those are three distinct layers. A process may emit arbitrary output.
-The harness should understand as little of it as necessary. The model
-should receive only the bounded observation required for its next
-decision.
+Three distinct layers. A process may emit arbitrary output. The
+harness understands as little of it as necessary. The model receives
+only the bounded observation required for its next decision.
 
-> **[INV] Bound harness work by decision relevance, not execution magnitude.**
+**Bound harness work by decision relevance, not execution magnitude.**
 
-A command may produce gigabytes. That does not mean the harness needs
-to ingest gigabytes to tell the model what happened.
+A command may produce gigabytes. That does not mean the harness
+needs to ingest gigabytes to tell the model what happened.
 
-> **[INV] Do not compress irrelevant facts. Eliminate them before representation.**
+**Do not compress irrelevant facts. Eliminate them before representation.**
 
-The optimal representation of irrelevant information is generally not
-a better summary. It is absence.
+The optimal representation of irrelevant information is generally
+not a better summary. It is absence.
 
-> **[DER] O = minimum truthful information sufficient for the next decision.**
+**Observation is the minimum truthful information sufficient for the next decision.**
 
-Observation should be truthful and bounded around what the agent
-needs to decide next. Not a transcript of everything the machine did.
+Observation is truthful and bounded around what the agent needs
+to decide next. Not a transcript of everything the machine did.
 
 ## 4. Interface boundaries
 
-> **[DER] OS-facing interface boundaries need not be model-facing interface boundaries.**
+**OS-facing interface boundaries need not be model-facing interface boundaries.**
 
 The operating system has processes, pipes, file descriptors, shell
 parsing, syscalls, filesystems, signals, and more. The model does
 not need one tool for every OS abstraction. Those mechanisms can
 live beneath a much smaller model-facing algebra.
 
-> **[INV] A tool contract is the complete coherent loop.**
+**A tool contract is the complete coherent loop.**
 
 ```
 description ≅ observation grammar ≅ input schema ≅ handler semantics
@@ -135,63 +127,63 @@ description ≅ observation grammar ≅ input schema ≅ handler semantics
 
 Not literal identity — but end-to-end semantic coherence. The
 miswired Gate 1 arms proved that testing a schema while another
-handler or observation grammar is actually active produces meaningless
-behavioral conclusions.
+handler or observation grammar is actually active produces
+meaningless behavioral conclusions.
 
-> **[OBS] Anything lexical in model-visible output can become an affordance.**
+**Anything lexical in model-visible output can become an affordance.**
 
-The accidental `[ref=obsN]` telemetry was not "just telemetry." The
-model started using `obs1` as a reference. Therefore model-visible
-output is part of the interface whether intended or not.
+The accidental `[ref=obsN]` telemetry was not "just telemetry."
+The model started using `obs1` as a reference. Therefore
+model-visible output is part of the interface whether intended or
+not.
 
 ## 5. Reading and addressing source
 
-> **[DER] Address structure by supplied identity, not reconstructed content.**
+**Address structure by supplied identity, not reconstructed content.**
 
-The model should copy an anchor supplied by the harness rather than
-reproduce arbitrary source text as an identifier.
+The model copies an anchor supplied by the harness rather than
+reproducing arbitrary source text as an identifier.
 
-> **[OBS] inline snapshot-bound anchors can be highly copyable under a coherent contract.**
+**Inline snapshot-bound anchors can be highly copyable under a coherent contract.**
 
 Once the B arm was actually wired correctly, `L<n>:<tag>` lexical
 copying was around 98%. That moved the primary problem away from
 anchor transcription and toward mutation semantics.
 
-> **[INV] snapshot identity ≠ line identity.**
+**Snapshot identity is not line identity.**
 
-`@ref R7` says which observed version of the file is being addressed.
-`L38:f1` identifies a line within that observation. Those are
-distinct pieces of state and should remain distinct.
+`@ref R7` says which observed version of the file is being
+addressed. `L38:f1` identifies a line within that observation.
+Those are distinct pieces of state and should remain distinct.
 
 ## 6. Mutation
 
-> **[INV] False preconditions cause failure, not relocation.**
+**False preconditions cause failure, not relocation.**
 
-No fuzzy search. No "closest line." No inferred indentation repair.
-No silently finding another matching region.
+No fuzzy search. No "closest line." No inferred indentation
+repair. No silently finding another matching region.
 
-> **[INV] Validate the complete mutation before committing any of it.**
+**Validate the complete mutation before committing any of it.**
 
-A batched splice either satisfies its preconditions or it does not.
-Partial semantic success is worse than explicit failure.
+A batched splice either satisfies its preconditions or it does
+not. Partial semantic success is worse than explicit failure.
 
-> **[OBS / DER] For a local change, anchored substitution is preferable to line reconstruction when applicable.**
+**For a local change, anchored substitution is preferable to line reconstruction when applicable.**
 
-This is one of the strongest editing results from the trajectory
-work. `at + old + new` allows the harness to retain indentation,
+`at + old + new` allows the harness to retain indentation,
 comments, unrelated text, line terminator, and neighboring lines.
 The model authors the change rather than reconstructing its
 container.
 
 ## 7. Post-edit state
 
-> **[INV] successful mutation should return truthful evidence of resulting local state.**
+**Successful mutation should return truthful evidence of resulting local state.**
 
-Not a receipt describing what the harness intended to write. Not an
-echo of the request. Actual source bytes read from the committed
-file.
+Not a receipt describing what the harness intended to write. Not
+an echo of the request. Actual source bytes read from the
+committed file.
 
-> **[INV] post-state is authoritative about bytes, not correctness.**
+**Post-state is authoritative about bytes, not correctness.**
 
 ```
 "these bytes now exist" ≠ "these bytes solve the task"
@@ -200,32 +192,30 @@ file.
 KALIP can establish the former. Only appropriate semantic
 verification can establish the latter.
 
-> **[INV] MutationSuccess ⊥ ObservationSuccess.**
+**Mutation success is independent of observation success.**
 
-If the edit committed but rendering the local post-state fails, the
-mutation does not retroactively become unsuccessful. The response
-must state both facts truthfully.
+If the edit committed but rendering the local post-state fails,
+the mutation does not retroactively become unsuccessful. The
+response must state both facts truthfully.
 
-> **[DER] post-edit observation should close local state, not create a new editing namespace.**
+**Post-edit observation should close local state, not create a new editing namespace.**
 
-Therefore splice post-state does not emit fresh editable line
-references. If the model needs another edit, it obtains a fresh
-`read_ref` snapshot.
+Splice post-state does not emit fresh editable line references.
+If the model needs another edit, it obtains a fresh `read_ref`
+snapshot.
 
 ## 8. Verification
 
-> **[OBS] post-state reduces state reacquisition, not the need for semantic verification.**
+**Post-state reduces state reacquisition, not the need for semantic verification.**
 
-The corrected v2 data is important here. `B_fixed` reduced immediate
-`read_ref` after splice from roughly 61% to 20%. But the model often
-went directly to `sed`, Python introspection, or — most importantly
-— `pytest`. That is not failure of post-state. It is the intended
-separation of responsibilities.
+`B_fixed` reduced immediate `read_ref` after splice from roughly
+61% to 20%. But the model often went directly to `sed`, Python
+introspection, or — most importantly — `pytest`. That is the
+intended separation of responsibilities.
 
-> **[OBS] shell activity after an edit ≠ repair activity.**
+**Shell activity after an edit is not repair activity.**
 
-The original README interpretation was wrong. Across the 16
-sessions:
+Across 16 sessions:
 
 ```
 cat > file                0
@@ -233,16 +223,16 @@ open(...).write(...)      0
 sed -i                    1
 ```
 
-Inspection and verification dominated. Therefore "used `sh` after
-splice" is not a useful failure metric.
+Inspection and verification dominated. "Used `sh` after splice"
+is not a useful failure metric.
 
-> **[DER] state reacquisition cost ≠ verification cost.**
+**State reacquisition cost is not verification cost.**
 
-These must be measured separately. A redundant reread of the exact
-bytes splice just returned is potentially removable overhead. Running
-the relevant tests is often useful work.
+These must be measured separately. A redundant reread of the
+exact bytes splice just returned is potentially removable
+overhead. Running the relevant tests is often useful work.
 
-> **[DER] a clean successful trajectory may end with semantic verification.**
+**A clean successful trajectory may end with semantic verification.**
 
 ```
 read_ref
@@ -256,14 +246,13 @@ That is not a trajectory KALIP should optimize away.
 
 ## 9. The three-tool decomposition
 
-> **[DER] read_ref = addressable observation.**
+```
+read_ref = addressable observation
+splice   = structure-preserving mutation + truthful local post-state
+sh       = general computation and semantic verification
+```
 
-> **[DER] splice = structure-preserving mutation + truthful local post-state.**
-
-> **[DER] sh = general computation and semantic verification.**
-
-Together, `{read_ref, splice, sh}` is a decomposition of three
-fundamentally different responsibilities:
+A decomposition of three fundamentally different responsibilities:
 
 ```
 observe → change → compute / verify
@@ -271,46 +260,46 @@ observe → change → compute / verify
 
 without multiplying specialized abstractions.
 
-## 10. Experimental laws that shaped the harness
+## 10. Experimental laws
 
-These are not product semantics. They are part of why the
-architecture deserves trust.
+These are part of why the architecture deserves trust.
 
-> **[INV] A behavioral result is inadmissible if the tested contract was not actually the contract shown to the model.**
+**A behavioral result is inadmissible if the tested contract was not actually the contract shown to the model.**
 
 The original B / B1 wiring failure permanently earned this rule.
 
-> **[OBS] aggregate metrics cannot overrule contradictory raw trajectories.**
+**Aggregate metrics cannot overrule contradictory raw trajectories.**
 
 When the report said failures were sh-only but the transcripts
 showed successful splice calls followed by failure, the report was
 wrong. Raw trajectory evidence outranked the derived narrative.
 
-> **[INV] derived classifiers must remain traceable to raw evidence.**
+**Derived classifiers must remain traceable to raw evidence.**
 
-Every label — `repair`, `reacquisition`, `verification`, `malformed
-edit` — should be recoverable from preceding observation, raw tool
-arguments, raw response, and subsequent action.
+Every label — `repair`, `reacquisition`, `verification`,
+`malformed edit` — should be recoverable from preceding
+observation, raw tool arguments, raw response, and subsequent
+action.
 
-> **[INV] Deterministic properties should be tested deterministically.**
+**Deterministic properties should be tested deterministically.**
 
 If the question is "does insertion at EOF return the correct
-committed post-state range?" you do not spend model inference money
-answering it. You write a contract test.
+committed post-state range?" you do not spend model inference
+money answering it. You write a contract test.
 
-> **[INV] experiment isolation requires substrate isolation.**
+**Experiment isolation requires substrate isolation.**
 
-Prompt isolation is not enough if one model session can find `/` and
-discover another experiment's workspace. The environment itself is
-part of experimental validity.
+Prompt isolation is not enough if one model session can find `/`
+and discover another experiment's workspace. The environment
+itself is part of experimental validity.
 
 ## 11. The deepest proposition
 
-> **[DER] Intelligence is upstream. Interface quality determines realized capability.**
+**Intelligence is upstream. Interface quality determines realized capability.**
 
 The engineering version:
 
-> **[DER] remove mechanically avoidable uncertainty before asking the model to reason.**
+**Remove mechanically avoidable uncertainty before asking the model to reason.**
 
 That explains almost every successful change:
 
@@ -326,18 +315,6 @@ That explains almost every successful change:
 
 And the KALIP-specific formulation:
 
-> **[DER] The harness should constrain mechanics without constraining capability.**
+**The harness should constrain mechanics without constraining capability.**
 
 That is the architectural thesis the experiments converged on.
-
----
-
-*Epistemic note:* the [INV] / [OBS] / [DER] tags are doing real work
-here, not decoration. An [INV] is construction-time — a property
-that must hold for the harness to be the harness. An [OBS] is
-empirical — a regularity observed in the runs that the harness
-relies on. A [DER] is design-justified — a choice that follows from
-the [INV]s and [OBS]s but could have been made differently without
-violating either. Conflating these three is what makes architectural
-propositions look like category theory when they are engineering
-notes.
